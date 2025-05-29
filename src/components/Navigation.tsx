@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -19,7 +20,7 @@ const Navigation = () => {
         <div className="flex justify-between items-center py-4">
           {/* Logo */}
           <div className="text-2xl font-bold text-cosmic-gradient">
-            Sabedoria Natural
+            <Link to="/">Sabedoria Natural</Link>
           </div>
 
           {/* Desktop Menu */}
@@ -33,6 +34,14 @@ const Navigation = () => {
                 {item.name}
               </a>
             ))}
+            {/* Link discreto para admin */}
+            <Link 
+              to="/admin/login"
+              className="text-white/30 hover:text-white/60 transition-colors duration-300 text-sm"
+              title="Área Administrativa"
+            >
+              •
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -59,6 +68,13 @@ const Navigation = () => {
                   {item.name}
                 </a>
               ))}
+              <Link 
+                to="/admin/login"
+                className="text-white/50 hover:text-white/80 transition-colors duration-300 py-2 text-sm"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Admin
+              </Link>
             </div>
           </div>
         )}
