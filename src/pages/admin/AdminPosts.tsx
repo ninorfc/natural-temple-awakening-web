@@ -2,17 +2,20 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAdmin } from '@/contexts/AdminContext';
+import { usePosts, useDeletePost } from '@/hooks/usePosts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Edit, Trash2, Search, ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
+import { Plus, Edit, Trash2, Search, ArrowLeft, Loader2 } from 'lucide-react';
 
 const AdminPosts = () => {
-  const { isAuthenticated, posts, deletePost } = useAdmin();
+  const { isAuthenticated } = useAdmin();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  
+  const { data: posts, isLoading, error } = usePosts();
+  const deletePostMutation = useDeletePost();
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -20,20 +23,34 @@ const AdminPosts = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  const filteredPosts = posts.filter(post =>
-    post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    post.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPosts = posts?.filter(post =>
+    post.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    post.conteudo_html.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    post.categorias?.some(cat => cat.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+  ) || [];
 
-  const handleDelete = (id: string, title: string) => {
-    if (window.confirm(`Tem certeza que deseja excluir o post "${title}"?`)) {
-      deletePost(id);
-      toast.success('Post excluído com sucesso!');
+  const handleDelete = (id: string, titulo: string) => {
+    if (window.confirm(`Tem certeza que deseja excluir o post "${titulo}"?`)) {
+      deletePostMutation.mutate(id);
     }
   };
 
   if (!isAuthenticated) return null;
+
+  if (error) {
+    return (
+      <div className="min-h-screen cosmic-bg flex items-center justify-center">
+        <Card className="bg-cosmic-dark/80 border-cosmic-violet/20">
+          <CardContent className="py-8 text-center">
+            <p className="text-red-400 mb-4">Erro ao carregar posts</p>
+            <Button onClick={() => window.location.reload()}>
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen cosmic-bg">
@@ -77,9 +94,17 @@ const AdminPosts = () => {
           </div>
         </div>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-cosmic-violet" />
+            <span className="ml-2 text-white">Carregando posts...</span>
+          </div>
+        )}
+
         {/* Lista de Posts */}
         <div className="space-y-4">
-          {filteredPosts.length === 0 ? (
+          {!isLoading && filteredPosts.length === 0 ? (
             <Card className="bg-cosmic-dark/80 border-cosmic-violet/20">
               <CardContent className="py-8 text-center">
                 <p className="text-white/70">
@@ -100,29 +125,33 @@ const AdminPosts = () => {
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
-                        <CardTitle className="text-white">{post.title}</CardTitle>
+                        <CardTitle className="text-white">{post.titulo}</CardTitle>
                         <Badge 
-                          variant={post.published ? "default" : "secondary"}
-                          className={post.published ? "bg-green-600" : "bg-yellow-600"}
+                          variant={post.status === 'publicado' ? "default" : "secondary"}
+                          className={post.status === 'publicado' ? "bg-green-600" : "bg-yellow-600"}
                         >
-                          {post.published ? 'Publicado' : 'Rascunho'}
+                          {post.status === 'publicado' ? 'Publicado' : 'Rascunho'}
                         </Badge>
                       </div>
-                      <p className="text-white/70 mb-2">{post.excerpt}</p>
+                      {post.meta_descricao && (
+                        <p className="text-white/70 mb-2">{post.meta_descricao}</p>
+                      )}
                       <div className="flex flex-wrap gap-2 mb-2">
-                        <Badge variant="outline" className="border-cosmic-violet/50 text-cosmic-violet">
-                          {post.category}
-                        </Badge>
-                        {post.tags.map((tag) => (
+                        {post.categorias?.map((categoria) => (
+                          <Badge key={categoria.id} variant="outline" className="border-cosmic-violet/50 text-cosmic-violet">
+                            {categoria.nome}
+                          </Badge>
+                        ))}
+                        {post.palavras_chave?.map((tag) => (
                           <Badge key={tag} variant="outline" className="border-cosmic-gold/50 text-cosmic-gold">
                             {tag}
                           </Badge>
                         ))}
                       </div>
                       <div className="text-sm text-white/50">
-                        Criado em: {new Date(post.createdAt).toLocaleDateString('pt-BR')}
-                        {post.updatedAt !== post.createdAt && (
-                          <span> • Atualizado em: {new Date(post.updatedAt).toLocaleDateString('pt-BR')}</span>
+                        Criado em: {new Date(post.created_at).toLocaleDateString('pt-BR')}
+                        {post.updated_at !== post.created_at && (
+                          <span> • Atualizado em: {new Date(post.updated_at).toLocaleDateString('pt-BR')}</span>
                         )}
                       </div>
                     </div>
@@ -136,9 +165,14 @@ const AdminPosts = () => {
                         variant="outline" 
                         size="sm" 
                         className="border-red-500/30 text-red-400 hover:bg-red-500/20"
-                        onClick={() => handleDelete(post.id, post.title)}
+                        onClick={() => handleDelete(post.id, post.titulo)}
+                        disabled={deletePostMutation.isPending}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {deletePostMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
                       </Button>
                     </div>
                   </div>

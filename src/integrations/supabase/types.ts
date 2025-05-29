@@ -9,7 +9,105 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      categorias: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      post_categorias: {
+        Row: {
+          categoria_id: string
+          post_id: string
+        }
+        Insert: {
+          categoria_id: string
+          post_id: string
+        }
+        Update: {
+          categoria_id?: string
+          post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_categorias_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "categorias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_categorias_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          autor_id: string | null
+          conteudo_html: string
+          created_at: string
+          data_publicacao: string
+          id: string
+          imagem_url: string | null
+          meta_descricao: string | null
+          palavras_chave: string[] | null
+          slug: string
+          status: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          autor_id?: string | null
+          conteudo_html: string
+          created_at?: string
+          data_publicacao?: string
+          id?: string
+          imagem_url?: string | null
+          meta_descricao?: string | null
+          palavras_chave?: string[] | null
+          slug: string
+          status?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          autor_id?: string | null
+          conteudo_html?: string
+          created_at?: string
+          data_publicacao?: string
+          id?: string
+          imagem_url?: string | null
+          meta_descricao?: string | null
+          palavras_chave?: string[] | null
+          slug?: string
+          status?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

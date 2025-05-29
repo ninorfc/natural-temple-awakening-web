@@ -1,82 +1,45 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-interface Post {
-  id: string;
-  title: string;
-  content: string;
-  excerpt: string;
-  category: string;
-  tags: string[];
-  published: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface AdminContextType {
   isAuthenticated: boolean;
-  posts: Post[];
   login: (username: string, password: string) => boolean;
   logout: () => void;
-  createPost: (post: Omit<Post, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updatePost: (id: string, post: Partial<Post>) => void;
-  deletePost: (id: string) => void;
-  getPost: (id: string) => Post | undefined;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
-export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
+export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [posts, setPosts] = useState<Post[]>([]);
 
   useEffect(() => {
-    // Verificar se está logado ao carregar
-    const authStatus = localStorage.getItem('admin_authenticated');
-    if (authStatus === 'true') {
-      setIsAuthenticated(true);
-    }
-
-    // Carregar posts do localStorage
-    const storedPosts = localStorage.getItem('admin_posts');
-    if (storedPosts) {
-      setPosts(JSON.parse(storedPosts));
-    } else {
-      // Posts de exemplo
-      const examplePosts: Post[] = [
-        {
-          id: '1',
-          title: 'O Despertar da Consciência Espiritual',
-          content: 'A jornada espiritual é um caminho de autodescoberta...',
-          excerpt: 'Descubra os primeiros passos para o despertar espiritual',
-          category: 'Despertar Espiritual',
-          tags: ['espiritualidade', 'consciência', 'despertar'],
-          published: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: '2',
-          title: 'Saberes Ancestrais e Plantas Medicinais',
-          content: 'As plantas são nossas grandes mestras...',
-          excerpt: 'Explore a sabedoria das plantas medicinais',
-          category: 'Plantas Medicinais',
-          tags: ['plantas', 'cura', 'ancestral'],
-          published: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ];
-      setPosts(examplePosts);
-      localStorage.setItem('admin_posts', JSON.stringify(examplePosts));
+    // Verificar se há uma sessão ativa
+    const adminSession = localStorage.getItem('adminSession');
+    if (adminSession) {
+      const session = JSON.parse(adminSession);
+      const now = new Date().getTime();
+      
+      // Verificar se a sessão não expirou (24 horas)
+      if (now - session.timestamp < 24 * 60 * 60 * 1000) {
+        setIsAuthenticated(true);
+      } else {
+        localStorage.removeItem('adminSession');
+      }
     }
   }, []);
 
   const login = (username: string, password: string): boolean => {
-    // Credenciais simples para demonstração
+    // Credenciais simples para admin (em produção, usar autenticação mais robusta)
     if (username === 'admin' && password === 'sabedoria2024') {
       setIsAuthenticated(true);
-      localStorage.setItem('admin_authenticated', 'true');
+      
+      // Salvar sessão
+      const session = {
+        timestamp: new Date().getTime(),
+        user: 'admin'
+      };
+      localStorage.setItem('adminSession', JSON.stringify(session));
+      
       return true;
     }
     return false;
@@ -84,51 +47,14 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = () => {
     setIsAuthenticated(false);
-    localStorage.removeItem('admin_authenticated');
-  };
-
-  const createPost = (newPost: Omit<Post, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const post: Post = {
-      ...newPost,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    const updatedPosts = [...posts, post];
-    setPosts(updatedPosts);
-    localStorage.setItem('admin_posts', JSON.stringify(updatedPosts));
-  };
-
-  const updatePost = (id: string, updatedPost: Partial<Post>) => {
-    const updatedPosts = posts.map(post => 
-      post.id === id 
-        ? { ...post, ...updatedPost, updatedAt: new Date().toISOString() }
-        : post
-    );
-    setPosts(updatedPosts);
-    localStorage.setItem('admin_posts', JSON.stringify(updatedPosts));
-  };
-
-  const deletePost = (id: string) => {
-    const updatedPosts = posts.filter(post => post.id !== id);
-    setPosts(updatedPosts);
-    localStorage.setItem('admin_posts', JSON.stringify(updatedPosts));
-  };
-
-  const getPost = (id: string): Post | undefined => {
-    return posts.find(post => post.id === id);
+    localStorage.removeItem('adminSession');
   };
 
   return (
     <AdminContext.Provider value={{
       isAuthenticated,
-      posts,
       login,
-      logout,
-      createPost,
-      updatePost,
-      deletePost,
-      getPost
+      logout
     }}>
       {children}
     </AdminContext.Provider>

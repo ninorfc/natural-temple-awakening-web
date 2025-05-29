@@ -2,27 +2,37 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useCreatePost, useCategories } from '@/hooks/usePosts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Save } from 'lucide-react';
-import { toast } from 'sonner';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { slugify } from '@/utils/slugify';
+import { supabase } from '@/integrations/supabase/client';
 
 const AdminCreatePost = () => {
-  const { isAuthenticated, createPost } = useAdmin();
+  const { isAuthenticated } = useAdmin();
   const navigate = useNavigate();
   
+  const createPostMutation = useCreatePost();
+  const { data: categories, isLoading: categoriesLoading } = useCategories();
+  
   const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    excerpt: '',
-    category: '',
-    tags: '',
-    published: false
+    titulo: '',
+    slug: '',
+    conteudo_html: '',
+    meta_descricao: '',
+    imagem_url: '',
+    palavras_chave: '',
+    status: 'rascunho' as 'rascunho' | 'publicado',
+    categoria_ids: [] as string[]
   });
+
+  const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -30,32 +40,95 @@ const AdminCreatePost = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const generateSlug = async (titulo: string) => {
+    if (!titulo.trim()) return '';
+    
+    setIsGeneratingSlug(true);
+    try {
+      const baseSlug = slugify(titulo);
+      
+      // Verificar se o slug já existe
+      const { data } = await supabase
+        .from('posts')
+        .select('slug')
+        .eq('slug', baseSlug)
+        .single();
+
+      let finalSlug = baseSlug;
+      let counter = 1;
+
+      // Se existe, adicionar número sequencial
+      while (data) {
+        finalSlug = `${baseSlug}-${counter}`;
+        const { data: existingSlug } = await supabase
+          .from('posts')
+          .select('slug')
+          .eq('slug', finalSlug)
+          .single();
+        
+        if (!existingSlug) break;
+        counter++;
+      }
+
+      return finalSlug;
+    } catch (error) {
+      // Se não encontrou nenhum post com o slug, pode usar o slug base
+      return slugify(titulo);
+    } finally {
+      setIsGeneratingSlug(false);
+    }
+  };
+
+  const handleTituloChange = async (titulo: string) => {
+    setFormData(prev => ({ ...prev, titulo }));
+    
+    if (titulo.trim()) {
+      const newSlug = await generateSlug(titulo);
+      setFormData(prev => ({ ...prev, slug: newSlug }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.title.trim() || !formData.content.trim()) {
-      toast.error('Título e conteúdo são obrigatórios!');
+    if (!formData.titulo.trim() || !formData.conteudo_html.trim()) {
       return;
     }
 
-    const post = {
-      title: formData.title.trim(),
-      content: formData.content.trim(),
-      excerpt: formData.excerpt.trim() || formData.content.substring(0, 150) + '...',
-      category: formData.category.trim() || 'Sem categoria',
-      tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-      published: formData.published
-    };
+    const palavrasChaveArray = formData.palavras_chave
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag);
 
-    createPost(post);
-    toast.success('Post criado com sucesso!');
-    navigate('/admin/posts');
+    createPostMutation.mutate({
+      titulo: formData.titulo.trim(),
+      slug: formData.slug || await generateSlug(formData.titulo),
+      conteudo_html: formData.conteudo_html.trim(),
+      meta_descricao: formData.meta_descricao.trim() || undefined,
+      imagem_url: formData.imagem_url.trim() || undefined,
+      status: formData.status,
+      palavras_chave: palavrasChaveArray.length > 0 ? palavrasChaveArray : undefined,
+      categoria_ids: formData.categoria_ids
+    }, {
+      onSuccess: () => {
+        navigate('/admin/posts');
+      }
+    });
   };
 
-  const handleInputChange = (field: string, value: string | boolean) => {
+  const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
+    }));
+  };
+
+  const handleCategoryChange = (categoryId: string, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      categoria_ids: checked
+        ? [...prev.categoria_ids, categoryId]
+        : prev.categoria_ids.filter(id => id !== categoryId)
     }));
   };
 
@@ -94,14 +167,14 @@ const AdminCreatePost = () => {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label htmlFor="title" className="text-white/90">
+                      <Label htmlFor="titulo" className="text-white/90">
                         Título *
                       </Label>
                       <Input
-                        id="title"
+                        id="titulo"
                         type="text"
-                        value={formData.title}
-                        onChange={(e) => handleInputChange('title', e.target.value)}
+                        value={formData.titulo}
+                        onChange={(e) => handleTituloChange(e.target.value)}
                         className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white"
                         placeholder="Digite o título do post"
                         required
@@ -109,26 +182,62 @@ const AdminCreatePost = () => {
                     </div>
 
                     <div>
-                      <Label htmlFor="excerpt" className="text-white/90">
-                        Resumo
+                      <Label htmlFor="slug" className="text-white/90">
+                        Slug (URL amigável)
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="slug"
+                          type="text"
+                          value={formData.slug}
+                          onChange={(e) => handleInputChange('slug', e.target.value)}
+                          className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white"
+                          placeholder="slug-automatico"
+                        />
+                        {isGeneratingSlug && (
+                          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-cosmic-violet" />
+                        )}
+                      </div>
+                      <p className="text-xs text-white/50 mt-1">
+                        Gerado automaticamente a partir do título
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="meta_descricao" className="text-white/90">
+                        Meta Descrição (SEO)
                       </Label>
                       <Textarea
-                        id="excerpt"
-                        value={formData.excerpt}
-                        onChange={(e) => handleInputChange('excerpt', e.target.value)}
+                        id="meta_descricao"
+                        value={formData.meta_descricao}
+                        onChange={(e) => handleInputChange('meta_descricao', e.target.value)}
                         className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white min-h-[100px]"
-                        placeholder="Breve descrição do post (opcional - será gerado automaticamente se não preenchido)"
+                        placeholder="Breve descrição para motores de busca (recomendado: 150-160 caracteres)"
                       />
                     </div>
 
                     <div>
-                      <Label htmlFor="content" className="text-white/90">
+                      <Label htmlFor="imagem_url" className="text-white/90">
+                        URL da Imagem de Destaque
+                      </Label>
+                      <Input
+                        id="imagem_url"
+                        type="url"
+                        value={formData.imagem_url}
+                        onChange={(e) => handleInputChange('imagem_url', e.target.value)}
+                        className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white"
+                        placeholder="https://exemplo.com/imagem.jpg"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="conteudo_html" className="text-white/90">
                         Conteúdo *
                       </Label>
                       <Textarea
-                        id="content"
-                        value={formData.content}
-                        onChange={(e) => handleInputChange('content', e.target.value)}
+                        id="conteudo_html"
+                        value={formData.conteudo_html}
+                        onChange={(e) => handleInputChange('conteudo_html', e.target.value)}
                         className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white min-h-[400px]"
                         placeholder="Escreva o conteúdo completo do post aqui..."
                         required
@@ -146,43 +255,61 @@ const AdminCreatePost = () => {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label htmlFor="category" className="text-white/90">
-                        Categoria
+                      <Label htmlFor="palavras_chave" className="text-white/90">
+                        Palavras-chave
                       </Label>
                       <Input
-                        id="category"
+                        id="palavras_chave"
                         type="text"
-                        value={formData.category}
-                        onChange={(e) => handleInputChange('category', e.target.value)}
-                        className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white"
-                        placeholder="Ex: Despertar Espiritual"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="tags" className="text-white/90">
-                        Tags
-                      </Label>
-                      <Input
-                        id="tags"
-                        type="text"
-                        value={formData.tags}
-                        onChange={(e) => handleInputChange('tags', e.target.value)}
+                        value={formData.palavras_chave}
+                        onChange={(e) => handleInputChange('palavras_chave', e.target.value)}
                         className="bg-cosmic-dark/50 border-cosmic-violet/30 text-white"
                         placeholder="espiritualidade, meditação, cura"
                       />
                       <p className="text-xs text-white/50 mt-1">
-                        Separe as tags com vírgulas
+                        Separe as palavras-chave com vírgulas
                       </p>
+                    </div>
+
+                    <div>
+                      <Label className="text-white/90 mb-3 block">Categorias</Label>
+                      {categoriesLoading ? (
+                        <div className="flex items-center space-x-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-cosmic-violet" />
+                          <span className="text-white/50 text-sm">Carregando categorias...</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {categories?.map((category) => (
+                            <div key={category.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`category-${category.id}`}
+                                checked={formData.categoria_ids.includes(category.id)}
+                                onCheckedChange={(checked) => 
+                                  handleCategoryChange(category.id, checked as boolean)
+                                }
+                              />
+                              <Label 
+                                htmlFor={`category-${category.id}`} 
+                                className="text-white/90 text-sm cursor-pointer"
+                              >
+                                {category.nome}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center space-x-2">
                       <Switch
-                        id="published"
-                        checked={formData.published}
-                        onCheckedChange={(checked) => handleInputChange('published', checked)}
+                        id="status"
+                        checked={formData.status === 'publicado'}
+                        onCheckedChange={(checked) => 
+                          handleInputChange('status', checked ? 'publicado' : 'rascunho')
+                        }
                       />
-                      <Label htmlFor="published" className="text-white/90">
+                      <Label htmlFor="status" className="text-white/90">
                         Publicar imediatamente
                       </Label>
                     </div>
@@ -193,9 +320,19 @@ const AdminCreatePost = () => {
                   <Button 
                     type="submit" 
                     className="w-full bg-cosmic-violet hover:bg-cosmic-violet/80"
+                    disabled={createPostMutation.isPending}
                   >
-                    <Save className="w-4 h-4 mr-2" />
-                    Salvar Post
+                    {createPostMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Salvar Post
+                      </>
+                    )}
                   </Button>
                   
                   <Link to="/admin/posts">
